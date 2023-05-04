@@ -1,5 +1,6 @@
 from transformers import PretrainedConfig
 
+
 class RobertaEmotionConfig(PretrainedConfig):
     model_type = "ma2za/roberta-emotion"
 

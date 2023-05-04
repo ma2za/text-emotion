@@ -1,12 +1,10 @@
+import torch
 from torch.nn import CrossEntropyLoss
-
-import torch 
-
 from transformers import AutoModel, PreTrainedModel
-
 from transformers.modeling_outputs import SequenceClassifierOutput
 
-from .configuration_roberta_emotion import RobertaEmotionConfig
+from configuration_roberta_emotion import RobertaEmotionConfig
+
 
 class RobertaEmotion(PreTrainedModel):
     config_class = RobertaEmotionConfig
