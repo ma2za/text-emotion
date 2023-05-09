@@ -13,16 +13,14 @@ class RobertaEmotion(PreTrainedModel):
         super().__init__(config)
         self.num_labels = config.num_labels
         self.backbone = AutoModel.from_pretrained("roberta-base", config)
-        self.dropout = torch.nn.Dropout(p=0.1)
-        self.output = torch.nn.Linear(config.hidden_size, config.num_labels)
-
-        for p in self.output.parameters():
-            torch.nn.init.xavier_normal_(p)
+        self.classifier = torch.nn.Sequential(
+            torch.nn.Dropout(p=0.1),
+            torch.nn.Linear(config.hidden_size, config.num_labels)
+        )
+        torch.nn.init.xavier_normal_(self.classifier[1].weight)
 
     def forward(self, input_ids, labels=None, attention_mask=None):
-        model_output = self.backbone(input_ids)
-        hidden = model_output.last_hidden_state
-        logits = self.output(self.dropout(hidden[:, 0, :]))
+        logits = self.classifier(self.backbone(input_ids).last_hidden_state[:, 0, :])
 
         loss = None
         if labels is not None:
