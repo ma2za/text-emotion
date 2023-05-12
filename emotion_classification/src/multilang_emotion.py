@@ -33,26 +33,31 @@ def emotion(text: Union[str, List[str]]) -> List[str]:
     if isinstance(text, str):
         text = [text]
 
-    translator = EasyNMT("opus-mt")
     src = _language_detection(text)
 
-    # TODO group languages
-    sentences = []
+    translator = EasyNMT("opus-mt")
+
+    # TODO optimize grouping
+    inputs = {}
+    for src_lang, sentence in zip(src, text):
+        sentence_list = inputs.get(src_lang, [])
+        sentence_list.append(translator.translate(sentence, source_lang=src_lang, target_lang="en"))
+        inputs[src_lang] = sentence_list
 
     tokenizer = AutoTokenizer.from_pretrained("ma2za/roberta-emotion", trust_remote_code=True)
-
-    for source_lang, sentence in zip(src, text):
-        en_text = translator.translate(sentence, source_lang=source_lang, target_lang="en")
-        sentences.append(tokenizer.encode(en_text, return_tensors="pt"))
 
     config = AutoConfig.from_pretrained("ma2za/roberta-emotion", trust_remote_code=True)
 
     model = AutoModel.from_pretrained("ma2za/roberta-emotion", trust_remote_code=True, config=config)
-    
-    # TODO batch prediction
+
     output = []
     with torch.no_grad():
-        for sentence in sentences:
-            prediction = model.config.id2label[model(sentence).logits.argmax(-1).cpu().detach().numpy()[0]]
-            output.append(prediction)
+        for src_lang, sentences in inputs.items():
+            # TODO break long sentences
+            input_ids = tokenizer(sentences, padding=True, truncation=False,
+                                  return_attention_mask=False, return_tensors="pt").get("input_ids")
+            prediction = model(input_ids).logits.argmax(-1).cpu().detach().numpy()
+            prediction = [model.config.id2label[x] for x in prediction]
+            output.extend(prediction)
+
     return output
