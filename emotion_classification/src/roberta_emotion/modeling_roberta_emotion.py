@@ -1,6 +1,6 @@
 import torch
 from torch.nn import CrossEntropyLoss
-from transformers import AutoModel, PreTrainedModel
+from transformers import PreTrainedModel, RobertaModel, RobertaConfig
 from transformers.modeling_outputs import SequenceClassifierOutput
 
 from .configuration_roberta_emotion import RobertaEmotionConfig
@@ -12,7 +12,12 @@ class RobertaEmotion(PreTrainedModel):
     def __init__(self, config):
         super().__init__(config)
         self.num_labels = config.num_labels
-        self.backbone = AutoModel.from_pretrained("roberta-base", config)
+
+        roberta_base_config = RobertaConfig.from_pretrained("roberta-base",
+                                                            **config.to_dict(),
+                                                            num_labels=config.num_labels)
+
+        self.backbone = RobertaModel.from_pretrained("roberta-base", config=roberta_base_config)
         self.classifier = torch.nn.Sequential(
             torch.nn.Dropout(p=0.1),
             torch.nn.Linear(config.hidden_size, config.num_labels)
