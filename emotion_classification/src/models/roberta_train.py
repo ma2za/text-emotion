@@ -112,7 +112,10 @@ model_config = {
     "label2id": label2id,
     "hidden_size": 768,
     "num_labels": 6,
-    "position_embedding_type": "relative_key_query"
+    "position_embedding_type": "relative_key_query",
+    "vocab_size": 50265,
+    "max_position_embeddings": 514,
+    "type_vocab_size": 1
 }
 
 emotion_config = RobertaEmotionConfig(**model_config)
@@ -128,46 +131,36 @@ def compute_metrics(preds, labels):
 
 def evaluation(model, dataloader):
     model.eval()
-    total_samples = 0
-    total_loss = 0
-    total_acc = 0
-    total_f1 = 0
-    for step, batch in tqdm(enumerate(dataloader), total=len(dataloader)):
-        input_ids = batch["input_ids"].to(device)
-        labels = batch["labels"].to(device)
-        outputs = model(input_ids=input_ids, labels=labels)
-        acc, f1 = compute_metrics(outputs.logits.argmax(-1).detach().cpu(), labels.detach().cpu())
-        total_acc += acc * len(labels)
-        total_f1 += f1 * len(labels)
-        total_samples += len(labels)
-        total_loss += outputs.loss.detach().cpu() * len(labels)
+    total_samples, total_loss, total_acc, total_f1 = 0, 0, 0, 0
+    with torch.no_grad():
+        for step, batch in tqdm(enumerate(dataloader), total=len(dataloader)):
+            inputs = {k: v.to(device) for k, v in batch.items()}
+            outputs = model(**inputs)
+            acc, f1 = compute_metrics(outputs.logits.argmax(-1).detach().cpu(),
+                                      batch["labels"].detach().cpu())
+            total_acc += acc * len(batch["labels"])
+            total_f1 += f1 * len(batch["labels"])
+            total_samples += len(batch["labels"])
+            total_loss += outputs.loss.detach().cpu() * len(batch["labels"])
     return total_acc / total_samples, total_f1 / total_samples, total_loss / total_samples
 
 
 def train(model, checkpoint_dir, optimizer, lr_scheduler, train_loader,
           valid_loader, tune_flag=False, config={}):
     best_f1 = 0
-
     for epoch in range(config["epochs"]):
         model.train()
         for step, batch in tqdm(enumerate(train_loader), total=len(train_loader)):
             model.zero_grad()
             inputs = {k: v.to(device) for k, v in batch.items()}
             outputs = model(**inputs)
+
         valid_acc, valid_f1, valid_loss = evaluation(model, valid_loader)
 
-        if tune_flag:
-
-            with tune.checkpoint_dir(epoch) as checkpoint_dir:
-                path = os.path.join(checkpoint_dir, "checkpoint")
-                torch.save((model.state_dict(), optimizer.state_dict()), path)
-
-            tune.report(loss=valid_loss, accuracy=valid_acc)
-        else:
-            if best_f1 < valid_f1:
-                best_f1 = valid_f1
-                path = os.path.join(checkpoint_dir, "pytorch_model.bin")
-                torch.save(model.state_dict(), path)
+        if best_f1 < valid_f1:
+            best_f1 = valid_f1
+            path = os.path.join(checkpoint_dir, "pytorch_model.bin")
+            torch.save(model.state_dict(), path)
 
 
 def train_roberta(config: Dict, checkpoint_dir: str = None):

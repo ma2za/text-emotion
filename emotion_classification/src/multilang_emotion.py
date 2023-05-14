@@ -1,9 +1,16 @@
+import os
 from typing import List, Union
 
 import fasttext
+import requests
 import torch
 from easynmt import EasyNMT
 from transformers import AutoModel, AutoTokenizer, AutoConfig
+
+CONFIG = {
+    "model": "ma2za/roberta-emotion",
+    "fasttext": "data/lid.176.bin"
+}
 
 
 def _language_detection(text: List[str]) -> List[str]:
@@ -13,7 +20,13 @@ def _language_detection(text: List[str]) -> List[str]:
     :return:
     """
 
-    pretrained_lang_model = "../data/lid.176.bin"
+    # TODO move to cache directory
+    pretrained_lang_model = CONFIG.get("fasttext")
+    if not os.path.exists(pretrained_lang_model):
+        resp = requests.get("https://dl.fbaipublicfiles.com/fasttext/supervised-models/lid.176.bin")
+        with open(pretrained_lang_model, "wb") as f:
+            f.write(resp.content)
+
     try:
         lang_model = fasttext.load_model(pretrained_lang_model)
     except ValueError:
@@ -23,9 +36,11 @@ def _language_detection(text: List[str]) -> List[str]:
     return src
 
 
-def emotion(text: Union[str, List[str]]) -> List[str]:
+def emotion(text: Union[str, List[str]], emotion_language: str) -> List[str]:
     """
 
+    :param emotion_language:
+    :return:
     :param text:
     :return:
     """
@@ -44,11 +59,13 @@ def emotion(text: Union[str, List[str]]) -> List[str]:
         sentence_list.append(translator.translate(sentence, source_lang=src_lang, target_lang="en"))
         inputs[src_lang] = sentence_list
 
-    tokenizer = AutoTokenizer.from_pretrained("ma2za/roberta-emotion", trust_remote_code=True)
+    # TODO cache models
+    tokenizer = AutoTokenizer.from_pretrained(CONFIG.get("model", "ma2za/roberta-emotion"), trust_remote_code=True)
 
-    config = AutoConfig.from_pretrained("ma2za/roberta-emotion", trust_remote_code=True)
+    config = AutoConfig.from_pretrained(CONFIG.get("model", "ma2za/roberta-emotion"), trust_remote_code=True)
 
-    model = AutoModel.from_pretrained("ma2za/roberta-emotion", trust_remote_code=True, config=config)
+    model = AutoModel.from_pretrained(CONFIG.get("model", "ma2za/roberta-emotion"), trust_remote_code=True,
+                                      config=config)
 
     output = []
     with torch.no_grad():
@@ -60,4 +77,4 @@ def emotion(text: Union[str, List[str]]) -> List[str]:
             prediction = [model.config.id2label[x] for x in prediction]
             output.extend(prediction)
 
-    return output
+    return [translator.translate(em, source_lang="en", target_lang=emotion_language) for em in output]
