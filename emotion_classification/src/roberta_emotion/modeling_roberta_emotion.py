@@ -22,7 +22,6 @@ class RobertaEmotion(PreTrainedModel):
             torch.nn.Dropout(p=0.1),
             torch.nn.Linear(config.hidden_size, config.num_labels)
         )
-        torch.nn.init.xavier_normal_(self.classifier[1].weight)
 
     def forward(self, input_ids, labels=None, attention_mask=None):
         logits = self.classifier(self.backbone(input_ids).last_hidden_state[:, 0, :])

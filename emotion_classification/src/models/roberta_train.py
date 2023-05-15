@@ -11,13 +11,14 @@ from datasets import ClassLabel, Features, Value
 from datasets import Dataset
 from datasets import concatenate_datasets
 from datasets import load_dataset
+from evaluate import evaluator
 from sklearn.metrics import accuracy_score, f1_score
 from torch.optim import AdamW
 from torch.optim.lr_scheduler import LambdaLR
 from torch.utils.data import DataLoader
 from tqdm.notebook import tqdm
+from transformers import DataCollatorWithPadding
 from transformers import RobertaTokenizer
-from transformers.data.data_collator import default_data_collator
 
 from emotion_classification.src.roberta_emotion.configuration_roberta_emotion import RobertaEmotionConfig
 from emotion_classification.src.roberta_emotion.modeling_roberta_emotion import RobertaEmotion
@@ -34,7 +35,7 @@ tokenizer = RobertaTokenizer.from_pretrained("roberta-base")
 
 
 def tokenization(sample):
-    return tokenizer(sample["text"], padding=True, truncation=True)
+    return tokenizer(sample["text"], padding=True, truncation=False)
 
 
 """## Dataset"""
@@ -67,13 +68,13 @@ features = Features({'label': ClassLabel(names=['sadness', 'joy', 'love', 'anger
 daily_dialog = Dataset.from_pandas(pd.DataFrame(list(itertools.chain(*temp["chunks"]))),
                                    features=features)
 
-DATASETS = ["emotion"]
-# DATASETS = ["emotion", "daily_dialog"]
+# DATASETS = ["emotion"]
+DATASETS = ["emotion", "daily_dialog"]
 
 if len(DATASETS) != 1:
     dataset["train"] = concatenate_datasets([dataset["train"], daily_dialog])
 
-dataset = dataset.map(tokenization, batched=True, batch_size=None)
+dataset = dataset.map(tokenization, batched=False, batch_size=None)
 
 dataset.set_format("torch", columns=["input_ids", "label"])
 
@@ -113,6 +114,7 @@ model_config = {
     "hidden_size": 768,
     "num_labels": 6,
     "position_embedding_type": "relative_key_query",
+    "hidden_act": "gelu_new",
     "vocab_size": 50265,
     "max_position_embeddings": 514,
     "type_vocab_size": 1
@@ -148,6 +150,10 @@ def evaluation(model, dataloader):
 def train(model, checkpoint_dir, optimizer, lr_scheduler, train_loader,
           valid_loader, tune_flag=False, config={}):
     best_f1 = 0
+
+    unfreeze_patience = 5
+    current_patience = 0
+
     for epoch in range(config["epochs"]):
         model.train()
         for step, batch in tqdm(enumerate(train_loader), total=len(train_loader)):
@@ -155,28 +161,43 @@ def train(model, checkpoint_dir, optimizer, lr_scheduler, train_loader,
             inputs = {k: v.to(device) for k, v in batch.items()}
             outputs = model(**inputs)
 
+            lr_scheduler.step()
         valid_acc, valid_f1, valid_loss = evaluation(model, valid_loader)
 
         if best_f1 < valid_f1:
             best_f1 = valid_f1
             path = os.path.join(checkpoint_dir, "pytorch_model.bin")
             torch.save(model.state_dict(), path)
+            current_patience = 0
+        else:
+            current_patience += 1
+
+        if current_patience >= unfreeze_patience:
+            model.requires_grad_(True)
+
+
+data_collator = DataCollatorWithPadding(
+    tokenizer=tokenizer,
+    padding="longest",
+    return_tensors="pt"
+)
 
 
 def train_roberta(config: Dict, checkpoint_dir: str = None):
     train_loader = DataLoader(
         train_dataset,
         batch_size=int(config["batch_size"]),
-        collate_fn=default_data_collator,
+        collate_fn=data_collator,
         drop_last=False,
         num_workers=0,
+        shuffle=True,
         pin_memory=True
     )
 
     valid_loader = DataLoader(
         valid_dataset,
         batch_size=64,
-        collate_fn=default_data_collator,
+        collate_fn=data_collator,
         drop_last=False,
         num_workers=0,
         pin_memory=True
@@ -187,7 +208,19 @@ def train_roberta(config: Dict, checkpoint_dir: str = None):
     num_warmup_steps = num_training_steps * config["warmup_ratio"]
 
     model = RobertaEmotion(emotion_config).to(device)
-    optimizer = AdamW(model.parameters(), lr=config["lr"], betas=(0.9, 0.999), eps=1e-08)
+
+    model.backbone.embeddings.requires_grad_(False)
+    model.backbone.encoder.requires_grad_(False)
+    model.backbone.pooler.requires_grad_(True)
+
+    for n, p in model.backbone.encoder.named_parameters():
+        if "distance_embedding" in n:
+            torch.nn.init.xavier_normal_(p)
+            p.requires_grad_(True)
+
+    torch.nn.init.xavier_normal_(model.classifier[1].weight)
+
+    optimizer = AdamW(model.parameters(), lr=config["lr"], betas=(0.9, 0.999), eps=1e-08, weight_decay=0.01)
 
     def lr_lambda(x: float, warmup: float, total: float):
         return x / warmup if x < warmup else (total - x) / (total - warmup)
@@ -199,9 +232,34 @@ def train_roberta(config: Dict, checkpoint_dir: str = None):
 
 
 train_config = {"batch_size": 128,
-                "epochs": 25,
+                "epochs": 100,
                 "lr": 1e-05,
                 "warmup_ratio": 0.2,
                 "datasets": DATASETS}
 
 model = train_roberta(train_config, checkpoint_dir=".")
+
+model_state = torch.load(os.path.join(".", "pytorch_model.bin"))
+model.load_state_dict(model_state)
+
+model.push_to_hub("roberta-emotion")
+tokenizer.push_to_hub("roberta-emotion")
+
+"""## Evaluation"""
+
+task_evaluator = evaluator("text-classification")
+
+results = task_evaluator.compute(
+    model_or_pipeline=model,
+    tokenizer=tokenizer,
+    data="emotion",
+    subset="split",
+    split="test",
+    metric="accuracy",
+    label_mapping=label2id,
+    strategy="bootstrap",
+    n_resamples=10,
+    random_state=0
+)
+
+results

@@ -8,9 +8,13 @@ from easynmt import EasyNMT
 from transformers import AutoModel, AutoTokenizer, AutoConfig
 
 CONFIG = {
-    "model": "ma2za/roberta-emotion",
-    "fasttext": "data/lid.176.bin"
+    "model": "ma2za/roberta-emotion"
 }
+
+DEFAULT_TRANSLATE_CACHE = os.path.expanduser("~/.cache/emotion_classification")
+
+if not os.path.isdir(DEFAULT_TRANSLATE_CACHE):
+    os.makedirs(DEFAULT_TRANSLATE_CACHE, exist_ok=True)
 
 
 def _language_detection(text: List[str]) -> List[str]:
@@ -20,17 +24,21 @@ def _language_detection(text: List[str]) -> List[str]:
     :return:
     """
 
-    # TODO move to cache directory
-    pretrained_lang_model = CONFIG.get("fasttext")
-    if not os.path.exists(pretrained_lang_model):
+    fasttext_path = os.path.join(DEFAULT_TRANSLATE_CACHE, "fasttext")
+    if not os.path.isdir(DEFAULT_TRANSLATE_CACHE):
+        os.makedirs(DEFAULT_TRANSLATE_CACHE, exist_ok=True)
+
+    fasttext_model = os.path.join(fasttext_path, "lid.176.bin")
+    if not os.path.exists(fasttext_model):
         resp = requests.get("https://dl.fbaipublicfiles.com/fasttext/supervised-models/lid.176.bin")
-        with open(pretrained_lang_model, "wb") as f:
+        with open(fasttext_model, "wb") as f:
             f.write(resp.content)
 
     try:
-        lang_model = fasttext.load_model(pretrained_lang_model)
+        lang_model = fasttext.load_model(fasttext_model)
     except ValueError:
         raise Exception("The fasttext language detection model is not present!")
+    text = [t.replace("\n", " ") for t in text]
     src = lang_model.predict(text, k=1)
     src = [lang[0].replace("__label__", "") for lang in src[0]]
     return src
