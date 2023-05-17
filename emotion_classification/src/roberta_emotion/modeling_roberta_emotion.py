@@ -18,10 +18,10 @@ class RobertaEmotion(PreTrainedModel):
 
         self.backbone = RobertaModel.from_pretrained("roberta-base", False, config=roberta_base_config)
         self.classifier = torch.nn.Sequential(
-            torch.nn.Linear(config.hidden_size, config.hidden_size),
+            torch.nn.Linear(config.hidden_size, int(config.hidden_size / 2)),
             torch.nn.GELU(),
             torch.nn.Dropout(p=0.1),
-            torch.nn.Linear(config.hidden_size, config.num_labels)
+            torch.nn.Linear(int(config.hidden_size / 2), config.num_labels)
         )
 
     def forward(self, input_ids, labels=None, attention_mask=None):
