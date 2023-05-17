@@ -17,8 +17,8 @@ from torch.utils.data import DataLoader
 from tqdm.notebook import tqdm
 from transformers import DataCollatorWithPadding, RobertaTokenizerFast
 
-from emotion_classification.src.roberta_emotion.configuration_roberta_emotion import RobertaEmotionConfig
-from emotion_classification.src.roberta_emotion.modeling_roberta_emotion import RobertaEmotion
+from configuration_roberta_emotion import RobertaEmotionConfig
+from modeling_roberta_emotion import RobertaEmotion
 
 torch.manual_seed(0)
 random.seed(0)

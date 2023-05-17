@@ -1,4 +1,4 @@
-from multilang_emotion import emotion
+from src.multilang_emotion import emotion
 
 result = emotion(["wow, cosa stai facendo?", "è stato divertente", "i like you"],
                  emotion_language="it")

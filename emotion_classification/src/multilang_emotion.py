@@ -25,8 +25,8 @@ def _language_detection(text: List[str]) -> List[str]:
     """
 
     fasttext_path = os.path.join(DEFAULT_TRANSLATE_CACHE, "fasttext")
-    if not os.path.isdir(DEFAULT_TRANSLATE_CACHE):
-        os.makedirs(DEFAULT_TRANSLATE_CACHE, exist_ok=True)
+    if not os.path.isdir(fasttext_path):
+        os.makedirs(fasttext_path, exist_ok=True)
 
     fasttext_model = os.path.join(fasttext_path, "lid.176.bin")
     if not os.path.exists(fasttext_model):
