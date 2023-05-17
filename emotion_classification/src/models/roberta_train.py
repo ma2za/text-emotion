@@ -1,5 +1,4 @@
 import itertools
-import os
 import random
 from functools import partial
 from typing import Dict
@@ -11,14 +10,12 @@ from datasets import ClassLabel, Features, Value
 from datasets import Dataset
 from datasets import concatenate_datasets
 from datasets import load_dataset
-from evaluate import evaluator
 from sklearn.metrics import accuracy_score, f1_score
 from torch.optim import AdamW
 from torch.optim.lr_scheduler import LambdaLR
 from torch.utils.data import DataLoader
 from tqdm.notebook import tqdm
-from transformers import DataCollatorWithPadding
-from transformers import RobertaTokenizer
+from transformers import DataCollatorWithPadding, RobertaTokenizerFast
 
 from emotion_classification.src.roberta_emotion.configuration_roberta_emotion import RobertaEmotionConfig
 from emotion_classification.src.roberta_emotion.modeling_roberta_emotion import RobertaEmotion
@@ -31,7 +28,7 @@ device = "cuda" if torch.cuda.is_available() else "cpu"
 
 """## Tokenizer"""
 
-tokenizer = RobertaTokenizer.from_pretrained("roberta-base")
+tokenizer = RobertaTokenizerFast.from_pretrained("roberta-base")
 
 
 def tokenization(sample):
@@ -117,7 +114,7 @@ model_config = {
     "hidden_act": "gelu_new",
     "vocab_size": 50265,
     "max_position_embeddings": 514,
-    "type_vocab_size": 1
+    "type_vocab_size": 1,
 }
 
 emotion_config = RobertaEmotionConfig(**model_config)
@@ -147,43 +144,43 @@ def evaluation(model, dataloader):
     return total_acc / total_samples, total_f1 / total_samples, total_loss / total_samples
 
 
-def train(model, checkpoint_dir, optimizer, lr_scheduler, train_loader,
-          valid_loader, tune_flag=False, config={}):
+def train(model, optimizer, train_loader, valid_loader, config, lr_scheduler=None, epochs=0):
     best_f1 = 0
 
     unfreeze_patience = 5
     current_patience = 0
 
-    for epoch in range(config["epochs"]):
+    for epoch in range(epochs):
         model.train()
+        epoch_loss = torch.tensor(0.0).to(device)
         for step, batch in tqdm(enumerate(train_loader), total=len(train_loader)):
             model.zero_grad()
             inputs = {k: v.to(device) for k, v in batch.items()}
             outputs = model(**inputs)
+            epoch_loss += outputs.loss.detach() * len(inputs["input_ids"])
 
-            lr_scheduler.step()
+            if lr_scheduler is not None:
+                lr_scheduler.step()
         valid_acc, valid_f1, valid_loss = evaluation(model, valid_loader)
 
         if best_f1 < valid_f1:
             best_f1 = valid_f1
-            path = os.path.join(checkpoint_dir, "pytorch_model.bin")
-            torch.save(model.state_dict(), path)
+            torch.save(model.state_dict(), "pytorch_model.bin")
             current_patience = 0
         else:
             current_patience += 1
-
-        if current_patience >= unfreeze_patience:
-            model.requires_grad_(True)
+        if current_patience >= unfreeze_patience and lr_scheduler is None:
+            break
 
 
 data_collator = DataCollatorWithPadding(
     tokenizer=tokenizer,
     padding="longest",
-    return_tensors="pt"
+    return_tensors="pt",
 )
 
 
-def train_roberta(config: Dict, checkpoint_dir: str = None):
+def train_roberta(config: Dict):
     train_loader = DataLoader(
         train_dataset,
         batch_size=int(config["batch_size"]),
@@ -220,46 +217,33 @@ def train_roberta(config: Dict, checkpoint_dir: str = None):
 
     torch.nn.init.xavier_normal_(model.classifier[1].weight)
 
-    optimizer = AdamW(model.parameters(), lr=config["lr"], betas=(0.9, 0.999), eps=1e-08, weight_decay=0.01)
+    optimizer = AdamW(model.parameters(), lr=config["lr"], betas=(0.9, 0.999),
+                      eps=1e-08, weight_decay=0.01)
+
+    train(model, optimizer, train_loader, valid_loader, config, epochs=10000)
+
+    print("FIRST STEP DONE!")
+
+    optimizer = AdamW(model.parameters(), lr=config["lr"] * 0.001, betas=(0.9, 0.999),
+                      eps=1e-08, weight_decay=0.01)
 
     def lr_lambda(x: float, warmup: float, total: float):
         return x / warmup if x < warmup else (total - x) / (total - warmup)
 
     lr_scheduler = LambdaLR(optimizer, partial(lr_lambda, warmup=num_warmup_steps,
                                                total=num_training_steps))
-    train(model, checkpoint_dir, optimizer, lr_scheduler, train_loader, valid_loader, config=config)
+
+    model.requires_grad_(True)
+
+    train(model, optimizer, train_loader, valid_loader, config, lr_scheduler, config["epochs"])
+
     return model
 
 
 train_config = {"batch_size": 128,
                 "epochs": 100,
-                "lr": 1e-05,
+                "lr": 1e-02,
                 "warmup_ratio": 0.2,
                 "datasets": DATASETS}
 
-model = train_roberta(train_config, checkpoint_dir=".")
-
-model_state = torch.load(os.path.join(".", "pytorch_model.bin"))
-model.load_state_dict(model_state)
-
-model.push_to_hub("roberta-emotion")
-tokenizer.push_to_hub("roberta-emotion")
-
-"""## Evaluation"""
-
-task_evaluator = evaluator("text-classification")
-
-results = task_evaluator.compute(
-    model_or_pipeline=model,
-    tokenizer=tokenizer,
-    data="emotion",
-    subset="split",
-    split="test",
-    metric="accuracy",
-    label_mapping=label2id,
-    strategy="bootstrap",
-    n_resamples=10,
-    random_state=0
-)
-
-results
+model = train_roberta(train_config)
