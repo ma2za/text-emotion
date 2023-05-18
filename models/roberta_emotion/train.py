@@ -49,37 +49,13 @@ daily_dialog = load_dataset("daily_dialog")
 
 daily_dialog = concatenate_datasets([daily_dialog["train"], daily_dialog["validation"], daily_dialog["test"]])
 
+go_emotions = load_dataset("go_emotions", "raw")
 
-def merge_daily_dialog(examples):
-    dd2emo = {
-        1: "anger",
-        3: "fear",
-        4: "joy",
-        5: "sadness",
-        6: "surprise"
-    }
-
-    return {"chunks": [{"text": d, "label": dd2emo[e]} for d, e in zip(examples["dialog"], examples["emotion"]) if
-                       e in [1, 3, 4, 5, 6] and len(d) < 85]}
-
-
-temp = daily_dialog.map(merge_daily_dialog, remove_columns=daily_dialog.column_names)
-
-features = Features({'label': ClassLabel(names=['sadness', 'joy', 'love', 'anger', 'fear', 'surprise'], id=None),
-                     'text': Value(dtype='string', id=None)})
-
-daily_dialog = Dataset.from_pandas(pd.DataFrame(list(itertools.chain(*temp["chunks"]))),
-                                   features=features)
-
-# DATASETS = ["emotion"]
-DATASETS = ["emotion", "daily_dialog"]
-
-if len(DATASETS) != 1:
-    dataset["train"] = concatenate_datasets([dataset["train"], daily_dialog])
-
-dataset = dataset.map(tokenization, batched=False, batch_size=None)
-
-dataset.set_format("torch", columns=["input_ids", "label"])
+go_emotions["train"] = go_emotions["train"].remove_columns(
+    ['id', 'author', 'subreddit', 'link_id', 'parent_id', 'created_utc', 'rater_id', 'example_very_unclear',
+     'admiration', 'amusement', 'annoyance', 'approval', 'caring', 'confusion', 'curiosity', 'desire', 'disappointment',
+     'disapproval', 'disgust', 'embarrassment', 'excitement', 'gratitude', 'grief', 'nervousness', 'optimism', 'pride',
+     'realization', 'relief', 'remorse', 'neutral'])
 
 id2label = {
     0: "sadness",
@@ -98,6 +74,57 @@ label2id = {
     "fear": 4,
     "surprise": 5
 }
+
+
+def filter_go_emotions(*args):
+    return sum(args) == 1
+
+
+go_emotions = go_emotions.filter(filter_go_emotions,
+                                 input_columns=['anger', 'fear', 'joy', 'love', 'sadness', 'surprise'])
+
+
+def map_go_emotions(examples):
+    for k, v in examples.items():
+        if v == 1:
+            return {"label": k}
+    raise Exception
+
+
+go_emotions = go_emotions.map(map_go_emotions,
+                              remove_columns=['anger', 'fear', 'joy', 'love', 'sadness', 'surprise'])
+
+
+def merge_daily_dialog(examples):
+    dd2emo = {
+        1: "anger",
+        3: "fear",
+        4: "joy",
+        5: "sadness",
+        6: "surprise"
+    }
+
+    return {"chunks": [{"text": d, "label": dd2emo[e]} for d, e in zip(examples["dialog"], examples["emotion"]) if
+                       e in [1, 3, 4, 5, 6] and len(d) < 85]}
+
+
+temp = daily_dialog.map(merge_daily_dialog, remove_columns=daily_dialog.column_names)
+
+features = Features({'label': ClassLabel(names=['sadness', 'joy', 'love', 'anger', 'fear', 'surprise'], id=None),
+                     'text': Value(dtype='string', id=None)})
+go_emotions = go_emotions["train"].cast_column("label", features["label"])
+daily_dialog = Dataset.from_pandas(pd.DataFrame(list(itertools.chain(*temp["chunks"]))),
+                                   features=features)
+
+# DATASETS = ["emotion"]
+DATASETS = ["emotion", "daily_dialog", "go_emotions"]
+
+if len(DATASETS) != 1:
+    dataset["train"] = concatenate_datasets([dataset["train"], daily_dialog, go_emotions])
+
+dataset = dataset.map(tokenization, batched=False, batch_size=None)
+
+dataset.set_format("torch", columns=["input_ids", "label"])
 
 train_dataset = dataset["train"]
 train_dataset.remove_columns(["text"])
