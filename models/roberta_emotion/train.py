@@ -1,4 +1,5 @@
 import itertools
+import os
 import random
 from functools import partial
 from typing import Dict
@@ -6,19 +7,24 @@ from typing import Dict
 import numpy as np
 import pandas as pd
 import torch
+import wandb
 from datasets import ClassLabel, Features, Value
-from datasets import Dataset
 from datasets import concatenate_datasets
-from datasets import load_dataset
+from datasets import load_dataset, Dataset
+from dotenv import load_dotenv
 from sklearn.metrics import accuracy_score, f1_score
 from torch.optim import AdamW
 from torch.optim.lr_scheduler import LambdaLR
 from torch.utils.data import DataLoader
-from tqdm.notebook import tqdm
+from tqdm import tqdm
 from transformers import DataCollatorWithPadding, RobertaTokenizerFast
 
 from configuration_roberta_emotion import RobertaEmotionConfig
 from modeling_roberta_emotion import RobertaEmotion
+
+load_dotenv()
+
+wandb.login(key=os.getenv("KEY"))
 
 torch.manual_seed(0)
 random.seed(0)
@@ -193,7 +199,7 @@ def train_roberta(config: Dict):
 
     valid_loader = DataLoader(
         valid_dataset,
-        batch_size=64,
+        batch_size=4,
         collate_fn=data_collator,
         drop_last=False,
         num_workers=0,
@@ -205,10 +211,13 @@ def train_roberta(config: Dict):
     num_warmup_steps = num_training_steps * config["warmup_ratio"]
 
     model = RobertaEmotion(emotion_config).to(device)
+    best_model = wandb.restore('pytorch_model.bin', run_path='meraxes/emotion_classifier/9ajzjglr')
+    temp = torch.load("pytorch_model.bin", map_location=torch.device('cpu'))
+    model.load_state_dict(temp)
 
-    model.backbone.embeddings.requires_grad_(False)
-    model.backbone.encoder.requires_grad_(False)
-    model.backbone.pooler.requires_grad_(True)
+    valid_acc, valid_f1, valid_loss = evaluation(model, valid_loader)
+
+    model.backbone.requires_grad_(False)
 
     for n, p in model.backbone.encoder.named_parameters():
         if "distance_embedding" in n:
