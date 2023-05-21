@@ -11,7 +11,7 @@ class RobertaEmotion(PreTrainedModel):
     def __init__(self, config, **kwargs):
         super().__init__(config)
         self.num_labels = config.num_labels
-
+        self.smoothing = kwargs.get("smoothing", 0.0)
         roberta_base_config = RobertaConfig.from_pretrained("roberta-base",
                                                             **config.to_dict(),
                                                             num_labels=config.num_labels)
@@ -40,7 +40,7 @@ class RobertaEmotion(PreTrainedModel):
         loss = None
         if labels is not None:
             labels = labels.to(logits.device)
-            loss_fct = torch.nn.CrossEntropyLoss()
+            loss_fct = torch.nn.CrossEntropyLoss(label_smoothing=self.smoothing)
             loss = loss_fct(logits.view(-1, self.num_labels), labels.view(-1))
 
         return SequenceClassifierOutput(loss=loss, logits=logits)

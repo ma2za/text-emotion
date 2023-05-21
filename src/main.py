@@ -4,12 +4,10 @@
 #                  emotion_language="it")
 #
 # print(result)
-from transformers import RobertaTokenizer
 
 from data.preprocessing import load_emotion_datasets
 
-tokenizer = RobertaTokenizer.from_pretrained("roberta-base")
-
-dataset = load_emotion_datasets(["emotion", "daily_dialog", "go_emotions"], tokenizer)
+dataset = load_emotion_datasets(["emotion", "go_emotions"],
+                                ['anger', 'fear', 'joy', 'love', 'sadness', 'surprise'])
 
 print()
