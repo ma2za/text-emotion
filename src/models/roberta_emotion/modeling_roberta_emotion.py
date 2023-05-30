@@ -1,5 +1,5 @@
 import torch
-from torch_adapters.utils import add_lora
+from torch_adapters.utils import add_prefix_tuning_embedding, add_lora
 from transformers import PreTrainedModel, RobertaModel
 from transformers import RobertaConfig
 from transformers.modeling_outputs import SequenceClassifierOutput
@@ -22,8 +22,13 @@ class RobertaEmotion(PreTrainedModel):
                                                      kwargs.get("pooling", True),
                                                      config=roberta_base_config)
 
-        if len(kwargs.get("lora", [])) != 0:
-            add_lora(self.backbone, kwargs.get("lora"))
+        if kwargs.get("prefix_tuning") is not None:
+            prefix_config = kwargs.get("prefix_tuning")
+            add_prefix_tuning_embedding(self.backbone, embeddings=prefix_config.get("embeddings"),
+                                        config={"prefix_length": prefix_config.get("prefix_length"),
+                                                "hidden_rank": prefix_config.get("hidden_rank")})
+        if kwargs.get("lora") is not None:
+            add_lora(self.backbone, kwargs.get("lora"), config={"alpha": 8, "r": 8})
 
         self.custom_pooling = None
         if not kwargs.get("pooling", True):
@@ -38,7 +43,7 @@ class RobertaEmotion(PreTrainedModel):
         )
 
     def forward(self, input_ids, labels=None, attention_mask=None):
-        hidden = self.backbone(input_ids).last_hidden_state[:, 0, :]
+        hidden = self.backbone(input_ids, attention_mask=attention_mask).last_hidden_state[:, 0, :]
         if self.custom_pooling is not None:
             hidden = self.custom_pooling(hidden)
         logits = self.classifier(hidden)
