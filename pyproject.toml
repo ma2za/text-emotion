@@ -1,17 +1,20 @@
 [tool.poetry]
 name = "emotion-classification"
-version = "0.1.0"
-description = "Multilanguage Emotion Classification"
+version = "0.0.1"
+description = "Multilingual Emotion Classification"
 authors = ["ma2za <mazzapaolo2019@gmail.com>"]
+license = "MIT"
 readme = "README.md"
-packages = [{ include = "emotion_classification" }]
+packages = [{ include = "emotion", from = "src" }]
+
+repository = "https://github.com/ma2za/emotion"
+homepage = "https://github.com/ma2za/emotion"
+
+keywords = ["emotion", "xlm-roberta", "text-classification", "multilingual"]
 
 [tool.poetry.dependencies]
 python = "^3.8"
-transformers = "^4.28.1"
-torch = "^2.0.0"
-fasttext = "^0.9.2"
-easynmt = "^2.0.2"
+
 
 [tool.poetry.group.dev.dependencies]
 
