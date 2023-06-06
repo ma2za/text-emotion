@@ -20,14 +20,14 @@ _URLS = {
         "urls": ["http://yanran.li/files/ijcnlp_dailydialog.zip"],
         "license": "CC BY-NC-SA 4.0"
     },
-    "emotion": {
+    "text_emotion": {
         "data": ["data/data.jsonl.gz"],
         "license": "educational/research"
     }
 }
 
 _CLASS_NAMES = [
-    "no emotion",
+    "no text_emotion",
     "happiness",
     "admiration",
     "amusement",
@@ -86,7 +86,7 @@ class EmotionsDataset(datasets.GeneratorBasedBuilder):
             features=["text", "label", "dataset", "license"]
         ),
         EmotionsDatasetConfig(
-            name="emotion",
+            name="text_emotion",
             label_classes=_CLASS_NAMES,
             features=["text", "label", "dataset", "license"]
         )
@@ -128,7 +128,7 @@ class EmotionsDataset(datasets.GeneratorBasedBuilder):
 
     def process_daily_dialog(self, filepaths, dataset):
         # TODO move outside
-        emo_mapping = {0: "no emotion", 1: "anger", 2: "disgust",
+        emo_mapping = {0: "no text_emotion", 1: "anger", 2: "disgust",
                        3: "fear", 4: "happiness", 5: "sadness", 6: "surprise"}
         for i, filepath in enumerate(filepaths):
             if os.path.isdir(filepath):
@@ -171,7 +171,7 @@ class EmotionsDataset(datasets.GeneratorBasedBuilder):
         elif dataset == "daily_dialog":
             for d in self.process_daily_dialog(filepaths, dataset):
                 yield d
-        elif dataset == "emotion":
+        elif dataset == "text_emotion":
             emo_mapping = {0: "sadness", 1: "joy", 2: "love",
                            3: "anger", 4: "fear", 5: "surprise"}
             for i, filepath in enumerate(filepaths):

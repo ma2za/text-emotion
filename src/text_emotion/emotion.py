@@ -7,11 +7,13 @@ import torch
 from easynmt import EasyNMT
 from transformers import AutoModel, AutoTokenizer, AutoConfig
 
+__all__ = ["Detector"]
+
 CONFIG = {
     "model": "ma2za/roberta-emotion"
 }
 
-DEFAULT_TRANSLATE_CACHE = os.path.expanduser("~/.cache/emotion")
+DEFAULT_TRANSLATE_CACHE = os.path.expanduser("~/.cache/text-emotion")
 
 if not os.path.isdir(DEFAULT_TRANSLATE_CACHE):
     os.makedirs(DEFAULT_TRANSLATE_CACHE, exist_ok=True)
@@ -19,7 +21,9 @@ if not os.path.isdir(DEFAULT_TRANSLATE_CACHE):
 
 class Detector:
 
-    def __init__(self):
+    def __init__(self, emotion_language: str = "en"):
+
+        self.emotion_language = emotion_language
         self.translator = EasyNMT("opus-mt")
 
         # TODO check cache models, device_map, int8
@@ -56,16 +60,17 @@ class Detector:
         src = [lang[0].replace("__label__", "") for lang in src[0]]
         return src
 
-    def detect(self, text: Union[str, List[str]], emotion_language: str) -> List[str]:
+    def detect(self, text: Union[str, List[str]]) -> Union[str, List[str]]:
         """
 
         :param text:
-        :param emotion_language:
         :return:
         """
 
+        return_list = True
         if isinstance(text, str):
             text = [text]
+            return_list = False
 
         src = Detector.__language_detection(text)
 
@@ -86,4 +91,5 @@ class Detector:
                 prediction = [self.model.config.id2label[x] for x in prediction]
                 output.extend(prediction)
 
-        return [self.translator.translate(em, source_lang="en", target_lang=emotion_language) for em in output]
+        labels = [self.translator.translate(em, source_lang="en", target_lang=self.emotion_language) for em in output]
+        return labels if return_list else labels[0]
