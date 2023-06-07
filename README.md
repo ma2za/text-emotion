@@ -15,7 +15,7 @@ You can install emotion using:
 ```python
 from text_emotion import Detector
 
-detector = Detector()
+detector = Detector(emotion_language="fr")
 
-print(detector.detect("Hello, I am so happy!", emotion_language="fr"))
+print(detector.detect("Hello, I am so happy!"))
 ```
