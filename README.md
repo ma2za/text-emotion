@@ -35,9 +35,9 @@ print(detector.detect("Hello, I am so happy!"))
 
 ### XLM-Roberta
 
-The underlying model is xlm-roberta-large. You can test it at:
+The underlying model is [XLM Roberta Emotion](https://huggingface.co/ma2za/xlm-roberta-emotion).
 
-https://huggingface.co/ma2za/xlm-roberta-emotion
+It is finetuned on the [Many Emotions Dataset](https://huggingface.co/datasets/ma2za/many_emotions).
 
 ### References
 

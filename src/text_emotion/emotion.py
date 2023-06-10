@@ -7,6 +7,8 @@ from transformers import AutoModel, AutoTokenizer, AutoConfig
 
 __all__ = ["Detector"]
 
+from text_emotion.utils.exceptions import TextEmotionException
+
 CONFIG = {
     "model": {"name": "ma2za/roberta-emotion", "lang": ["en"]}
 }
@@ -67,7 +69,7 @@ class Detector:
         try:
             lang_model = fasttext.load_model(fasttext_model)
         except ValueError:
-            raise Exception("The fasttext language detection model is not present!")
+            raise TextEmotionException("The fasttext language detection model is not present!")
         text = [t.replace("\n", " ") for t in text]
         src = lang_model.predict(text, k=1)
         src = [lang[0].replace("__label__", "") for lang in src[0]]
